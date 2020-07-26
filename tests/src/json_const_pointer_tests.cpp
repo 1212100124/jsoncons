@@ -12,7 +12,7 @@
 #include <iterator>
 
 using namespace jsoncons;
-
+#if 0
 TEST_CASE("json_const_pointer array tests")
 {
     json j = json::parse(R"( ["one", "two", "three"] )");
@@ -182,6 +182,92 @@ TEST_CASE("json_const_pointer double tests")
         REQUIRE(v.is_double());
 
         CHECK(v.as_double() == 123.456);
+    }
+}
+#endif
+
+namespace {
+
+    void flatten(const json& source, 
+                 const std::string& identifier, 
+                 json& result)
+    {
+        json temp(json_array_arg);
+        for (auto& item : source.array_range())
+        {
+            if (item.is_array())
+            {
+                for (auto& item_of_item : item.array_range())
+                {
+                    temp.emplace_back(json_const_pointer_arg,std::addressof(item_of_item));
+                }
+            }
+            else
+            {
+                temp.emplace_back(json_const_pointer_arg, std::addressof(item));
+            }
+        }
+        for (const auto& item : temp.array_range())
+        {
+            if (!item.is_null())
+            {
+                const auto& j = item.contains(identifier) ? item.at(identifier) : json::null();
+                if (!j.is_null())
+                {
+                    result.emplace_back(json_const_pointer_arg, std::addressof(j));
+                }
+            }
+        }
+    }
+}
+
+TEST_CASE("json_const_pointer identifier tests")
+{
+    json source = json::parse(R"(
+    {"reservations": [{
+        "instances": [
+            {"foo": [{"bar": 1}, {"bar": 2}, {"notbar": 3}, {"bar": 4}]},
+            {"foo": [{"bar": 5}, {"bar": 6}, {"notbar": [7]}, {"bar": 8}]},
+            {"foo": "bar"},
+            {"notfoo": [{"bar": 20}, {"bar": 21}, {"notbar": [7]}, {"bar": 22}]},
+            {"bar": [{"baz": [1]}, {"baz": [2]}, {"baz": [3]}, {"baz": [4]}]},
+            {"baz": [{"baz": [1, 2]}, {"baz": []}, {"baz": []}, {"baz": [3, 4]}]},
+            {"qux": [{"baz": []}, {"baz": [1, 2, 3]}, {"baz": [4]}, {"baz": []}]}
+        ],
+        "otherkey": {"foo": [{"bar": 1}, {"bar": 2}, {"notbar": 3}, {"bar": 4}]}
+      }, {
+        "instances": [
+            {"a": [{"bar": 1}, {"bar": 2}, {"notbar": 3}, {"bar": 4}]},
+            {"b": [{"bar": 5}, {"bar": 6}, {"notbar": [7]}, {"bar": 8}]},
+            {"c": "bar"},
+            {"notfoo": [{"bar": 23}, {"bar": 24}, {"notbar": [7]}, {"bar": 25}]},
+            {"qux": [{"baz": []}, {"baz": [1, 2, 3]}, {"baz": [4]}, {"baz": []}]}
+        ],
+        "otherkey": {"foo": [{"bar": 1}, {"bar": 2}, {"notbar": 3}, {"bar": 4}]}
+      }
+    ]}
+    )");
+
+    SECTION("test1")
+    {
+        json target;
+        json j1(json_array_arg);
+        json j2(json_array_arg);
+        json j3(json_array_arg);
+        json expected = json::parse("[1,2,4,5,6,8]");
+        {
+            const json v1(json_const_pointer_arg, &source.at("reservations"));
+            flatten(v1, "instances", j1);
+
+            const json v2(json_const_pointer_arg, &j1);
+            flatten(v2, "foo", j2);
+
+            const json v3(json_const_pointer_arg, &j2);
+            flatten(v3, "bar", j3);
+
+            target = j3;
+        }
+        CHECK(target == expected);
     }
 }
 
